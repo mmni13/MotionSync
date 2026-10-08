@@ -1,0 +1,25 @@
+
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# PyInstaller
+build/
+dist/
+build1/
+dist1/
+
+# Release files
+*.zip
+*.exe
+
+# VS Code
+.vscode/
+
+# Backup folders
+viewer_backup*/
+
+# Temporary files
+*.log

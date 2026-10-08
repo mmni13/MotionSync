@@ -1,0 +1,11 @@
+Manuel eftersync 
+
+Skriv til 1080motion 
+
+cache
+
+Tegn streger
+
+Håndter flrere runs i samme excelfil
+
+Vælg resolution og FPS inden man cacher

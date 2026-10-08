@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 72">
+<rect width="330" height="72" fill="none"/>
+<g transform="translate(4 4)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+ <path d="M5 48c12-4 20-2 30 3 12 6 22 3 31-2M4 56c12-3 20-1 29 4 12 6 24 4 34-1" stroke="#14b8e6" stroke-width="2"/>
+ <circle cx="38" cy="13" r="4" fill="#f8fafc" stroke="none"/>
+ <path d="M34 20l-9 11 10 4-8 14M34 21l10 8 9-3M25 31l-9 7M35 35l12 13" stroke="#f8fafc" stroke-width="4"/>
+ <path d="M6 28h12M3 34h13M1 40h12" stroke="#14b8e6" stroke-width="1.7"/>
+ <path d="M53 22l4 5 4-10 4 20 5-11 4 5h7" stroke="#14b8e6" stroke-width="1.7"/>
+</g>
+<text x="89" y="40" fill="#f8fafc" font-family="Segoe UI,Arial,sans-serif" font-size="30" font-weight="700" font-style="italic">Motion<tspan fill="#17b8e8">Sync</tspan></text>
+<text x="91" y="59" fill="#17b8e8" font-family="Segoe UI,Arial,sans-serif" font-size="8.5" font-weight="700" letter-spacing="3">SPRINT &amp; SWIM ANALYSIS</text>
+</svg>
