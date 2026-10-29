@@ -1,0 +1,134 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Check release tag matches app version
+        shell: bash
+        run: |
+          version=$(python -c 'from viewer.version import VERSION; print(VERSION)')
+          test "v${version}" = "${GITHUB_REF_NAME}"
+
+  build:
+    needs: validate-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: windows-x64
+            os: windows-latest
+          - id: macos-arm64
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Run release regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Build Windows application
+        if: runner.os == 'Windows'
+        run: python -m PyInstaller --clean --noconfirm MotionSync.spec
+      - name: Smoke-test Windows application
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          [Environment]::SetEnvironmentVariable('1080_API_KEY', 'release-smoke-test', 'Process')
+          $exe = Resolve-Path 'dist/MotionSync/MotionSync.exe'
+          $process = Start-Process -FilePath $exe -PassThru
+          try {
+            $process.WaitForInputIdle(15000) | Out-Null
+            if ($process.HasExited) { throw 'MotionSync exited during startup.' }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $iscc = Join-Path $programFilesX86 'Inno Setup 6/ISCC.exe'
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          & $iscc "/DAppVersion=$version" 'installer/windows.iss'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $asset = Get-ChildItem release -Filter '*.exe' | Select-Object -First 1
+          $hash = (Get-FileHash $asset.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($asset.Name)" | Set-Content "$($asset.FullName).sha256" -Encoding ascii
+      - name: Verify Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = "arm64"
+      - name: Build macOS application bundle
+        if: runner.os == 'macOS'
+        run: python -m PyInstaller --clean --noconfirm MotionSync-macos.spec
+      - name: Smoke-test macOS application
+        if: runner.os == 'macOS'
+        run: |
+          app='dist/MotionSync.app'
+          test -d "$app"
+          test -x "$app/Contents/MacOS/MotionSync"
+          file "$app/Contents/MacOS/MotionSync" | grep -q arm64
+          1080_API_KEY=release-smoke-test python - "$app/Contents/MacOS/MotionSync" <<'PY'
+          import subprocess
+          import sys
+          import time
+
+          process = subprocess.Popen([sys.argv[1]])
+          try:
+              time.sleep(8)
+              if process.poll() is not None:
+                  raise SystemExit('MotionSync exited during startup')
+          finally:
+              process.terminate()
+              try:
+                  process.wait(timeout=5)
+              except subprocess.TimeoutExpired:
+                  process.kill()
+          PY
+      - name: Package macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          version='${GITHUB_REF_NAME#v}'
+          mkdir -p release
+          mkdir -p dist/dmg-root
+          cp -R dist/MotionSync.app dist/dmg-root/
+          ln -s /Applications dist/dmg-root/Applications
+          hdiutil create -quiet -volname MotionSync -srcfolder dist/dmg-root -ov -format UDZO "release/MotionSync-${version}-macos-arm64.dmg"
+          shasum -a 256 release/*.dmg > release/MotionSync-${version}-macos-arm64.dmg.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.id }}
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*

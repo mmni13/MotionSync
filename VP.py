@@ -5,7 +5,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 
 from viewer.main_window import VideoDataViewer
-from viewer.update_checker import get_latest_version
+from viewer.update_checker import get_latest_version, is_newer_version
 from viewer.version import VERSION
 
 def check_for_updates(parent=None):
@@ -14,7 +14,7 @@ def check_for_updates(parent=None):
     if not latest:
         return
 
-    if latest["version"] > VERSION:
+    if is_newer_version(latest["version"], VERSION):
 
         reply = QMessageBox.question(
             parent,
@@ -23,7 +23,7 @@ def check_for_updates(parent=None):
                 f"A new version of MotionSync is available.\n\n"
                 f"Current version: {VERSION}\n"
                 f"Latest version: {latest['version']}\n\n"
-                f"Open the download page?"
+                f"Open the release page to download the update?"
             ),
             QMessageBox.Yes | QMessageBox.No
         )

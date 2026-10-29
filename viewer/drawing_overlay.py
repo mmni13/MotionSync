@@ -38,7 +38,14 @@ class StillFrameWidget(QWidget):
         self.update()
 
     def set_image(self, image: QImage | None) -> None:
-        self._image = image.copy() if image is not None and not image.isNull() else None
+        if image is None or image.isNull():
+            self._image = None
+            self._aspect_width = None
+            self._aspect_height = None
+        else:
+            self._image = image.copy()
+            self._aspect_width = image.width()
+            self._aspect_height = image.height()
         self.update()
 
     def clear_image(self) -> None:

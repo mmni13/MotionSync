@@ -839,7 +839,7 @@ class VideoDataViewer(QWidget):
         self.attach_video_btn.clicked.connect(self._attach_video_and_fetch_data)
         self.add_angle_btn = QPushButton("Add camera angle")
         self.add_angle_btn.clicked.connect(self._add_camera_angle)
-        self.auto_match_video_btn = QPushButton("Auto-match CONTEMPLAS")
+        self.auto_match_video_btn = QPushButton("Auto-match videos")
         self.auto_match_video_btn.clicked.connect(self._auto_match_video_folder)
         self.load_run_btn = QPushButton("Load run")
         self.load_run_btn.clicked.connect(self._load_selected_run)
@@ -1463,37 +1463,62 @@ class VideoDataViewer(QWidget):
             self._show_warning("Auto-match videos", "Load a set with runs first.")
             return
 
-        appdata = os.environ.get("APPDATA", "").strip()
-        if not appdata:
-            self._show_warning(
-                "Auto-match CONTEMPLAS",
-                "Windows APPDATA is unavailable, so the CONTEMPLAS sessions "
-                "folder could not be located automatically.",
-            )
-            return
-
-        folder = Path(appdata) / "NTC SwimLab Analyse" / "accounts"
-        if not folder.exists():
-            self._show_warning(
-                "Auto-match CONTEMPLAS",
-                "The CONTEMPLAS accounts folder was not found:\n\n"
-                f"{folder}\n\n"
-                "Create a recording in NTC SwimLab Analyse first, or use "
-                "Add camera angle to select a manifest manually.",
-            )
-            return
-
-        self.status_label.setText(
-            "Scanning CONTEMPLAS sessions and reading manifest timestamps..."
+        source, accepted = QInputDialog.getItem(
+            self,
+            "Auto-match videos",
+            "Choose video source:",
+            ["CONTEMPLAS recordings", "Selected folder"],
+            0,
+            False,
         )
+        if not accepted:
+            return
+
+        include_contemplas = source == "CONTEMPLAS recordings"
+        if include_contemplas:
+            appdata = os.environ.get("APPDATA", "").strip()
+            if not appdata:
+                self._show_warning(
+                    "Auto-match CONTEMPLAS",
+                    "Windows APPDATA is unavailable, so the CONTEMPLAS sessions "
+                    "folder could not be located automatically.",
+                )
+                return
+
+            folder = Path(appdata) / "NTC SwimLab Analyse" / "accounts"
+            if not folder.exists():
+                self._show_warning(
+                    "Auto-match CONTEMPLAS",
+                    "The CONTEMPLAS accounts folder was not found:\n\n"
+                    f"{folder}\n\n"
+                    "Create a recording in NTC SwimLab Analyse first, or use "
+                    "Add camera angle to select a manifest manually.",
+                )
+                return
+        else:
+            cover_was_visible = self._hide_still_cover()
+            try:
+                selected_folder = QFileDialog.getExistingDirectory(
+                    self,
+                    "Select video folder",
+                    str(Path.cwd()),
+                )
+            finally:
+                self._restore_still_cover(cover_was_visible)
+            if not selected_folder:
+                return
+            folder = Path(selected_folder)
+
+        self.status_label.setText("Scanning videos and reading timestamps...")
         QApplication.processEvents()
         try:
             # Filesystem mtime is intentionally disabled. OneDrive/copying can
             # rewrite it, so only embedded video timestamps are used.
             videos, metadata_errors = scan_video_folder(
                 folder,
-                recursive=True,
+                recursive=include_contemplas,
                 allow_filesystem_fallback=False,
+                include_contemplas=include_contemplas,
             )
             if not videos:
                 details = "\n".join(
@@ -1530,7 +1555,7 @@ class VideoDataViewer(QWidget):
                 return
 
             answer = self._ask_question(
-                "Attach automatically matched CONTEMPLAS recordings?",
+                "Attach automatically matched videos?",
                 self._format_auto_match_summary(
                     result,
                     metadata_errors,
@@ -1895,6 +1920,7 @@ class VideoDataViewer(QWidget):
     def _rebuild_camera_strip(self) -> None:
         self._thumbnail_generation += 1
         self._thumbnail_pending.clear()
+        self._thumbnail_decoder.cancel()
         while self.camera_strip_layout.count() > 0:
             item = self.camera_strip_layout.takeAt(0)
             widget = item.widget()
@@ -1908,9 +1934,9 @@ class VideoDataViewer(QWidget):
             cached_preview = self.camera_preview_images.get(camera.id)
             if cached_preview is not None and not cached_preview.isNull():
                 widget.set_image(cached_preview)
-                widget.set_status("Active" if camera.id == self.active_camera_id else "Last viewed")
-            else:
-                widget.set_status("Open camera to preview")
+                widget.set_status("Active" if camera.id == self.active_camera_id else None)
+            #else:
+                #widget.set_status("Open camera to preview")
             self.camera_thumbnail_widgets[camera.id] = widget
             self.camera_strip_layout.addWidget(widget)
         self.camera_strip_layout.addStretch(1)
@@ -2047,6 +2073,7 @@ class VideoDataViewer(QWidget):
         )
         if self.current_run_identity == identity:
             self._load_camera_views(identity)
+            self._update_all_camera_previews()
         self._refresh_current_run_visuals()
         self.status_label.setText(f"Added camera angle: {selected_path.name}")
 
@@ -2116,8 +2143,13 @@ class VideoDataViewer(QWidget):
             existing_paths.add(str(camera_path))
             added += 1
 
+        was_current_run_loaded = (
+            self.current_run_identity == identity and self.video.is_ready
+        )
         self.current_run_identity = identity
         self._load_camera_views(identity)
+        if was_current_run_loaded:
+            self._update_all_camera_previews()
 
         # The synchronized camera group shares one LED frame, but not every
         # camera angle can see the LED. Choose the reference camera explicitly.
@@ -2434,7 +2466,7 @@ class VideoDataViewer(QWidget):
         self._restore_focus_after_camera_switch = was_playing
         data_time = self._video_frame_to_data_time(self.frame_index)
         self._suspend_thumbnail_updates()
-        self.pause()
+        self.pause(update_camera_previews=False)
         self._save_active_camera_drawings()
         self.active_camera_id = camera.id
         if self.current_run_identity is not None:
@@ -2474,6 +2506,7 @@ class VideoDataViewer(QWidget):
             if was_playing:
                 QTimer.singleShot(80, self.play)
             else:
+                self._update_all_camera_previews()
                 self._restore_focus_after_camera_switch = False
                 QTimer.singleShot(0, self._focus_loaded_still_image)
                 QTimer.singleShot(120, self._focus_loaded_still_image)
@@ -2497,15 +2530,11 @@ class VideoDataViewer(QWidget):
                 continue
             widget = self.camera_thumbnail_widgets.get(camera.id)
             if widget is not None:
-                widget.set_status("Static during playback")
+                #widget.set_status("Static during playback")
+                pass
 
     def _schedule_thumbnail_update(self, delay_ms: int = 220) -> None:
-        """Inactive camera previews are intentionally not decoded in background.
-
-        Background QRunnable/PyAV/BCAP preview jobs could outlive a camera switch,
-        widget rebuild, or key-step action and crash the Qt process. A camera now
-        receives a preview only after it has been opened as the active camera.
-        """
+        """Secondary previews are generated only when their camera is opened."""
         return
 
     def _camera_preview_time(self, camera: CameraView, data_time: float) -> tuple[float, str, int]:
@@ -2533,8 +2562,14 @@ class VideoDataViewer(QWidget):
         return max(0.0, local_seconds), "Open once to sync", 0
 
     def _update_camera_thumbnails(self, force: bool = False) -> None:
-        """Refresh only the active camera thumbnail on the GUI thread."""
-        if not self.video.is_ready or self.active_camera_id is None:
+        """Refresh the active preview only while paused."""
+        if (
+            self.playing
+            or self.pending_play_start
+            or self.playback_warmup
+            or not self.video.is_ready
+            or self.active_camera_id is None
+        ):
             return
         try:
             image = self.video.get_frame_image(self.frame_index)
@@ -2549,9 +2584,58 @@ class VideoDataViewer(QWidget):
             widget.set_image(detached)
             widget.set_status("Active")
 
+    def _update_all_camera_previews(self) -> None:
+        """Decode each attached camera at the current paused data time."""
+        if (
+            self.playing
+            or self.pending_play_start
+            or self.playback_warmup
+            or not self.video.is_ready
+        ):
+            return
+
+        self._thumbnail_generation += 1
+        self._thumbnail_pending.clear()
+        self._thumbnail_decoder.cancel()
+        self._update_camera_thumbnails()
+
+        data_time = self._video_frame_to_data_time(self.frame_index)
+        for camera in self.camera_views:
+            if camera.id == self.active_camera_id:
+                continue
+            widget = self.camera_thumbnail_widgets.get(camera.id)
+            if widget is None:
+                continue
+
+            seconds, status, rotation = self._camera_preview_time(camera, data_time)
+            self._thumbnail_pending.add(camera.id)
+            #widget.set_status(f"Finding paused frame | {status}")
+            self._thumbnail_decoder.request(
+                camera.id,
+                self._thumbnail_generation,
+                camera.path,
+                seconds,
+                rotation,
+            )
+
     def _on_thumbnail_frame_ready(self, camera_id, generation, image, error):
-        # Kept for signal compatibility. Background thumbnail jobs are disabled.
-        return
+        if generation != self._thumbnail_generation:
+            return
+        self._thumbnail_pending.discard(camera_id)
+        if self.playing or self.pending_play_start or self.playback_warmup:
+            return
+
+        widget = self.camera_thumbnail_widgets.get(camera_id)
+        if widget is None:
+            return
+        if error or image is None or image.isNull():
+            widget.set_status("Preview unavailable")
+            return
+
+        detached = image.copy()
+        self.camera_preview_images[camera_id] = detached
+        widget.set_image(detached)
+        #widget.set_status("Paused preview")
 
 
     def _exec_dialog_with_hidden_cover(self, dialog):
@@ -2911,6 +2995,7 @@ class VideoDataViewer(QWidget):
         self.status_label.setText(f"Ready: {Path(self.current_video_path).name} | {self.video.frame_count} frames @ {self.video.fps:.3f} FPS")
         self._restore_active_camera_drawings()
         self._rebuild_camera_strip()
+        self._update_all_camera_previews()
 
         # Both run-loading paths finish here. Restore main-window keyboard focus
         # after Qt has shown and positioned the separate paused still cover.
@@ -3051,6 +3136,14 @@ class VideoDataViewer(QWidget):
             pass
 
 
+        self._start_playback_when_thumbnails_idle()
+
+    def _start_playback_when_thumbnails_idle(self):
+        if not self.pending_play_start or not self.video.is_ready:
+            return
+        if self._thumbnail_decoder.is_busy:
+            QTimer.singleShot(16, self._start_playback_when_thumbnails_idle)
+            return
         self.video.start_playback(self.frame_index, self.playback_speed)
 
     def _on_playback_started(self):
@@ -3108,7 +3201,7 @@ class VideoDataViewer(QWidget):
             QTimer.singleShot(80, self._restore_shortcut_focus_after_camera_switch)
             self._restore_focus_after_camera_switch = False
 
-    def pause(self):
+    def pause(self, *, update_camera_previews: bool = True):
         # Preserve the camera-switch resume flag while pausing the old active
         # camera. Clear it only for an ordinary pause from an already-idle state.
         if (
@@ -3136,6 +3229,8 @@ class VideoDataViewer(QWidget):
             self.play_btn.setText("Play")
             self._set_button_icon(self.play_btn, "play.svg")
             self._show_still_frame(self.frame_index)
+            if update_camera_previews:
+                self._update_all_camera_previews()
             return
 
         if self.playing or self.playback_warmup:
@@ -3159,6 +3254,8 @@ class VideoDataViewer(QWidget):
                 min(int(paused_frame), self.video.frame_count - 1),
             )
             self._show_still_frame(self.frame_index)
+            if update_camera_previews:
+                self._update_all_camera_previews()
             return
 
         self.playing = False
@@ -3196,13 +3293,6 @@ class VideoDataViewer(QWidget):
             image = self.video.get_frame_image(self.frame_index)
             if image is not None:
                 self.video_panel.show_still_image(image)
-                if self.active_camera_id is not None:
-                    detached = image.copy()
-                    self.camera_preview_images[self.active_camera_id] = detached
-                    widget = self.camera_thumbnail_widgets.get(self.active_camera_id)
-                    if widget is not None:
-                        widget.set_image(detached)
-                        widget.set_status("Active")
             self._update_marker()
             return
         if self.pending_play_start or self.playback_warmup:
@@ -3252,6 +3342,16 @@ class VideoDataViewer(QWidget):
         t = self._video_frame_to_data_time(self.frame_index)
         idx = int(np.abs(self.sync.time_data - t).argmin())
         self.marker.setPos(float(self.sync.time_data[idx] if self.sync.x_mode == "time" else self.sync.position_data[idx]))
+        if self.marker_mode:
+            self._update_selection_stats()
+        else:
+            current_value = float(self.sync.current_signal[idx])
+            self.selection_label.setText(
+                f"{self.sync.current_signal_name}: {current_value:.3f}"
+            )
+            self.selection_label.adjustSize()
+            self.selection_label.setVisible(True)
+            self._position_selection_text()
 
     def _toggle_graph_sync_mode(self):
         if self.graph_sync_mode:
@@ -3413,6 +3513,9 @@ class VideoDataViewer(QWidget):
         y_data = self.sync.current_signal
         if x_data.size == 0 or y_data.size == 0:
             return
+        t = self._video_frame_to_data_time(self.frame_index)
+        current_index = int(np.abs(self.sync.time_data - t).argmin())
+        current_value = float(y_data[current_index])
         mask = (x_data >= x_min) & (x_data <= x_max)
         if not mask.any():
             mid = (x_min + x_max) / 2.0
@@ -3423,7 +3526,11 @@ class VideoDataViewer(QWidget):
             avg = float(np.mean(y_data[mask]))
             delta = x_max - x_min
         delta_label = f"Δt = {delta:.3f} s" if self.sync.x_mode == "time" else f"Δd = {delta:.3f} m"
-        self.selection_label.setText(f"Mean ({self.sync.current_signal_name}) = {avg:.3f}\n{delta_label}")
+        self.selection_label.setText(
+            f"{self.sync.current_signal_name}: {current_value:.3f}\n"
+            f"Mean ({self.sync.current_signal_name}) = {avg:.3f}\n"
+            f"{delta_label}"
+        )
         self.selection_label.adjustSize()
         self.selection_label.setVisible(True)
         try:
@@ -3763,7 +3870,6 @@ class VideoDataViewer(QWidget):
                 pass
             self.selection_region.setVisible(False)
             self.selection_region.setMovable(False)
-            self.selection_label.setVisible(False)
             self._restore_viewbox_state()
 
 
@@ -3776,6 +3882,7 @@ class VideoDataViewer(QWidget):
             self.marker_mode = False
             self._vb_state = None
             self._set_button_active(self.region_btn, False)
+            self._update_marker()
 
     def _sync_axis_dropdowns(self):
         """
@@ -3856,6 +3963,7 @@ class VideoDataViewer(QWidget):
 
         self.sync.set_signal(signal_index)
         self._refresh_plot_data(reset_view=False)
+        self._rescale_y_to_visible_x()
 
         # Keep the dropdown synchronized when the signal is changed using
         # keyboard shortcuts 1, 2, 3, or 4.
@@ -3873,6 +3981,39 @@ class VideoDataViewer(QWidget):
             self._update_selection_stats()
 
         self._update_marker()
+
+    def _rescale_y_to_visible_x(self):
+        x_data = np.asarray(self.sync.x_axis_data, dtype=float)
+        y_data = np.asarray(self.sync.current_signal, dtype=float)
+        if x_data.size == 0 or y_data.size == 0:
+            return
+
+        x_range = self.plot.getViewBox().viewRange()[0]
+        x_min, x_max = sorted((float(x_range[0]), float(x_range[1])))
+        visible = (
+            np.isfinite(x_data)
+            & np.isfinite(y_data)
+            & (x_data >= x_min)
+            & (x_data <= x_max)
+        )
+        if not visible.any():
+            valid = np.isfinite(x_data) & np.isfinite(y_data)
+            if not valid.any():
+                return
+            valid_indices = np.flatnonzero(valid)
+            midpoint = (x_min + x_max) / 2.0
+            nearest = valid_indices[
+                int(np.abs(x_data[valid] - midpoint).argmin())
+            ]
+            visible[nearest] = True
+
+        visible_values = y_data[visible]
+        y_min = float(visible_values.min())
+        y_max = float(visible_values.max())
+        padding = (y_max - y_min) * 0.05
+        if padding == 0:
+            padding = max(abs(y_min) * 0.05, 0.01)
+        self.plot.setYRange(y_min - padding, y_max + padding, padding=0)
 
     def _x_to_time_for_mode(self, x_value, mode):
         if mode == "time":

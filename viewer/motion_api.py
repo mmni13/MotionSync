@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import requests
+from viewer.app_paths import user_data_dir
 
 
 class Motion1080ApiError(RuntimeError):
@@ -80,12 +81,7 @@ class Motion1080Api:
     # ==================================================
     @classmethod
     def default_config_path(cls) -> Path:
-        local_app_data = os.environ.get("LOCALAPPDATA")
-
-        if local_app_data:
-            return Path(local_app_data) / "1080SyncViewer" / "config.json"
-
-        return Path.home() / ".1080SyncViewer" / "config.json"
+        return user_data_dir() / "config.json"
 
     @classmethod
     def load_local_config(cls, config_path: Path | None = None) -> dict[str, Any]:

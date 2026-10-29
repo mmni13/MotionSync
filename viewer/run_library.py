@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from viewer.app_paths import user_data_dir
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -168,23 +170,8 @@ class RunLibrary:
     # ==================================================
     @classmethod
     def default_root_dir(cls) -> Path:
-        """
-        Return the app's persistent local data directory.
-
-        On Windows this becomes:
-
-            %LOCALAPPDATA%/1080SyncViewer
-
-        On other platforms it falls back to:
-
-            ~/.1080SyncViewer
-        """
-        local_app_data = os.environ.get("LOCALAPPDATA")
-
-        if local_app_data:
-            return Path(local_app_data) / cls.APP_FOLDER_NAME
-
-        return Path.home() / f".{cls.APP_FOLDER_NAME}"
+        """Return the persistent per-user application data directory."""
+        return user_data_dir()
 
     def get_run_dir(self, identity: RunIdentity) -> Path:
         return (

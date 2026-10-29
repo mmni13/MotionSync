@@ -1,11 +1,15 @@
 from __future__ import annotations
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from viewer.app_paths import user_data_dir
 
 
-def default_recording_root() -> Path:
+def default_recording_root() -> Path | None:
+    if sys.platform != "win32":
+        return None
     roaming = os.environ.get("APPDATA")
     if roaming:
         return Path(roaming) / "NTC SwimLab Analyse" / "accounts"
@@ -13,9 +17,7 @@ def default_recording_root() -> Path:
 
 
 def catalog_path() -> Path:
-    local = os.environ.get("LOCALAPPDATA")
-    root = Path(local) if local else Path.home()
-    target = root / "1080SyncViewer"
+    target = user_data_dir()
     target.mkdir(parents=True, exist_ok=True)
     return target / "contemplas_recordings.json"
 
@@ -239,7 +241,10 @@ def cached_snapshot(
 
 
 def discover_default_manifests(*, force_rescan: bool = False) -> list[Path]:
-    root = default_recording_root().resolve()
+    recording_root = default_recording_root()
+    if recording_root is None:
+        return []
+    root = recording_root.resolve()
     if not root.exists():
         return []
     data = _load()

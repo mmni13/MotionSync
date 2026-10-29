@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +8,7 @@ from typing import Any
 
 import av
 from viewer.bcap_reader import BcapReader
+from viewer.app_paths import user_cache_dir
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal
 from PySide6.QtGui import QImage, QPixmap, QTransform
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
@@ -37,10 +37,7 @@ class CameraView:
 
 
 def default_cache_root() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        return Path(local_app_data) / "1080_sync" / "cache"
-    return Path.home() / ".1080_sync" / "cache"
+    return user_cache_dir()
 
 
 def cache_dir_for_video(video_path: Path, cache_root: Path | None = None) -> Path:
@@ -279,6 +276,10 @@ class ThumbnailDecoder(QObject):
         self.pool.setMaxThreadCount(1)
         self._cancel_event = threading.Event()
 
+    @property
+    def is_busy(self) -> bool:
+        return self.pool.activeThreadCount() > 0
+
     def cancel(self) -> None:
         """Cancel the running job cooperatively and remove queued jobs."""
         self._cancel_event.set()
@@ -296,5 +297,13 @@ class ThumbnailDecoder(QObject):
         seconds: float,
         rotation: int = 0,
     ) -> None:
-        """Background preview decoding is disabled for process stability."""
-        return
+        job = _ThumbnailJob(
+            camera_id,
+            generation,
+            path,
+            seconds,
+            rotation,
+            self._cancel_event,
+        )
+        job.signals.finished.connect(self.frame_ready)
+        self.pool.start(job)

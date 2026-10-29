@@ -12,7 +12,10 @@ from typing import Any, Iterable
 import av
 
 
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".m4v"}
+VIDEO_EXTENSIONS = {
+    ".mp4", ".mov", ".avi", ".mkv", ".m4v", ".3gp", ".3g2",
+    ".mts", ".m2ts", ".mpeg", ".mpg", ".webm", ".wmv",
+}
 MANIFEST_NAMES = {"session.manifest.json", "swimlab-recording.json"}
 VIDEO_TIMESTAMP_KEYS = (
     "com.apple.quicktime.creationdate",
@@ -455,21 +458,19 @@ def scan_video_folder(
     *,
     recursive: bool = False,
     allow_filesystem_fallback: bool = False,
+    include_contemplas: bool = True,
 ):
-    """Read normal videos and cached CONTEMPLAS manifests.
-
-    CONTEMPLAS is discovered automatically below %APPDATA%/NTC SwimLab Analyse;
-    users never need to browse to the hidden application-data directory.
-    """
-    from viewer.contemplas_catalog import discover_default_manifests
-
+    """Read timestamped videos, optionally including CONTEMPLAS manifests."""
     folder = Path(folder).resolve()
     iterator = folder.rglob("*") if recursive else folder.iterdir()
     candidates = [
         path for path in sorted(iterator)
         if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
     ]
-    candidates.extend(discover_default_manifests())
+    if include_contemplas:
+        from viewer.contemplas_catalog import discover_default_manifests
+
+        candidates.extend(discover_default_manifests(force_rescan=True))
 
     videos: list[VideoMetadata] = []
     errors: list[tuple[Path, str]] = []

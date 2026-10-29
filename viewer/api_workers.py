@@ -495,9 +495,6 @@ class ApiFetchAndCacheRunDataWorker(_ApiWorkerBase):
         else:
             sample_distance = position
 
-        # Original export contains Power [W].
-        power = speed * force
-
         # raw_run_data is normally a motionGroup:
         #
         # {
@@ -532,14 +529,16 @@ class ApiFetchAndCacheRunDataWorker(_ApiWorkerBase):
         total_distance = first_motion.get("totalDistance")
         total_time = first_motion.get("totalTime")
 
-        # Best-effort direction label.
-        # If this turns out reversed for your specific data, we can flip it later.
+        # Movement direction and resistance mode are separate properties.
         if first_motion.get("isEccentric") is True:
-            direction = "Resisted"
+            direction = "Eccentric"
         elif first_motion.get("isEccentric") is False:
-            direction = "Assisted"
+            direction = "Concentric"
         else:
             direction = side if side and str(side).lower() != "unknown" else None
+
+        # Original export contains Power [W].
+        power = speed * force
 
         # Build the same column structure as the original 1080 export.
         data = {

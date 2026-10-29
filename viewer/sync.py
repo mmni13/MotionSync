@@ -69,12 +69,18 @@ class SyncEngine:
 
         self.time_data = df["Sample Time [s]"].to_numpy(dtype=float)
         self.position_data = df["Sample Distance [m]"].to_numpy(dtype=float)
+        speed = df["Speed [m/s]"].to_numpy(dtype=float)
+        power = df["Power [W]"].to_numpy(dtype=float)
+        exercise = df["Exercise"].dropna() if "Exercise" in df.columns else pd.Series(dtype=object)
+        if not exercise.empty and "assisted" in str(exercise.iloc[0]).casefold():
+            speed = -speed
+            power = -power
 
         self.signals = {
-            1: ("Velocity [m/s]", df["Speed [m/s]"].to_numpy(dtype=float)),
+            1: ("Velocity [m/s]", speed),
             2: ("Acceleration [m/s²]", df["Acceleration [m/s2]"].to_numpy(dtype=float)),
             3: ("Force [N]", df["Force [N]"].to_numpy(dtype=float)),
-            4: ("Power [W]", df["Power [W]"].to_numpy(dtype=float)),
+            4: ("Power [W]", power),
         }
 
         self._current_signal = 1

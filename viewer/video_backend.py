@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Optional
 from viewer.bcap_reader import BcapReader
+from viewer.app_paths import user_cache_dir
 
 import av
 import cv2
@@ -25,10 +25,7 @@ ProgressCallback = Optional[Callable[[int, str], None]]
 
 
 def _default_cache_root() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        return Path(local_app_data) / "1080_sync" / "cache"
-    return Path.home() / ".1080_sync" / "cache"
+    return user_cache_dir()
 
 
 class VideoBackend(QObject):
