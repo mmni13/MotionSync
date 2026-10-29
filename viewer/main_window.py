@@ -50,8 +50,8 @@ class VideoDataViewer(QWidget):
                         app.setWindowIcon(app_icon)
                 break
 
-        self.resize(1450, 900)
-
+        #self.resize(1450, 900)
+        self.resize(3440, 1440)
         self.video = VideoBackend()
         self.sync = SyncEngine()
         self.run_library = RunLibrary()
