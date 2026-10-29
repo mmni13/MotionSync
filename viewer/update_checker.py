@@ -4,7 +4,7 @@ from packaging.version import InvalidVersion, Version
 GITHUB_API = "https://api.github.com/repos/mmni13/MotionSync/releases/latest"
 
 
-def get_latest_version():
+def get_latest_release():
     try:
         response = requests.get(GITHUB_API, timeout=5)
         response.raise_for_status()
@@ -14,10 +14,18 @@ def get_latest_version():
         return {
             "version": data["tag_name"].removeprefix("v"),
             "url": data["html_url"],
+            "assets": data.get("assets") or [],
         }
 
     except Exception:
         return None
+
+
+def get_latest_version():
+    release = get_latest_release()
+    if release is None:
+        return None
+    return {"version": release["version"], "url": release["url"]}
 
 
 def is_newer_version(latest: str, current: str) -> bool:

@@ -5,7 +5,7 @@ from PyInstaller.utils.hooks import collect_all
 datas = [('viewer/icons', 'viewer/icons')]
 binaries = []
 hiddenimports = ['openpyxl', 'packaging', 'pandas', 'requests']
-for package in ('av', 'cv2', 'pyqtgraph'):
+for package in ('av', 'cv2'):
     package_data, package_binaries, package_imports = collect_all(package)
     datas += package_data
     binaries += package_binaries

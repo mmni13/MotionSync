@@ -1463,6 +1463,11 @@ class VideoDataViewer(QWidget):
             self._show_warning("Auto-match videos", "Load a set with runs first.")
             return
 
+        parent = self.window()
+        parent.showNormal()
+        parent.raise_()
+        parent.activateWindow()
+
         source, accepted = QInputDialog.getItem(
             self,
             "Auto-match videos",

@@ -24,16 +24,21 @@ the selected-folder video scan or attach a recording manually.
 
 ## Updates
 
-MotionSync checks GitHub Releases at startup and offers to open the release
-page when a newer version is available. Close MotionSync before installing the
-new version. Existing run data, API settings, and caches remain in the per-user
-application data directory.
+On Windows, MotionSync checks GitHub Releases at startup. When a newer Windows
+installer is available, choose **Update** to download and verify it. MotionSync
+closes, installs the update, then reopens. Existing run data, API settings, and
+caches remain in the per-user application data directory.
+
+The first updater-enabled release must be installed manually from GitHub
+Releases once; Windows versions before it only open the release page. macOS
+updates remain manual: download the new DMG and replace MotionSync in
+Applications.
 
 ## Build and release
 
 Runtime dependencies are pinned in `requirements.txt`; build tools are pinned
 in `requirements-build.txt`. Tag a commit with the same version as
-`viewer/version.py`, for example `v1.0.0`, and push the tag. GitHub Actions
+`viewer/version.py`, for example `v1.0.2`, and push the tag. GitHub Actions
 builds the Windows installer and Apple Silicon DMG, creates SHA-256 files, and
 publishes them to a GitHub Release.
 
